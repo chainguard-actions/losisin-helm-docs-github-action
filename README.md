@@ -1,5 +1,7 @@
 # losisin/helm-docs-github-action
 
+Install helm-docs tool and auto-generate markdown documentation from Helm charts
+
 Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at [https://github.com/losisin/helm-docs-github-action](https://github.com/losisin/helm-docs-github-action).
 
 ## Versions
