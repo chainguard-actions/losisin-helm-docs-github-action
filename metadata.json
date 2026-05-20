@@ -1,7 +1,0 @@
-{
-  "owner": "losisin",
-  "name": "helm-docs-github-action",
-  "visibility": "public",
-  "description": "Install helm-docs tool and auto-generate markdown documentation from Helm charts",
-  "block_publish": false
-}
