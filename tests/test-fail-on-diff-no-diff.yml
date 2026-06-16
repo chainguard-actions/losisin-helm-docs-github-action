@@ -1,0 +1,59 @@
+name: Test fail-on-diff with no diff (should pass)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Prepare chart in temp location (outside git workspace)
+        run: |
+          mkdir -p /tmp/helm-test-nodiff
+          cat > /tmp/helm-test-nodiff/Chart.yaml << 'EOF'
+          apiVersion: v2
+          name: test-chart-nodiff
+          description: A test Helm chart for no-diff testing
+          type: application
+          version: 0.1.0
+          appVersion: "1.0.0"
+          EOF
+          cat > /tmp/helm-test-nodiff/values.yaml << 'EOF'
+          # -- Number of replicas
+          replicaCount: 1
+          EOF
+          cat > /tmp/helm-test-nodiff/README.md.gotmpl << 'EOF'
+          # {{ .Name }}
+
+          {{ .Description }}
+
+          ## Values
+
+          {{ template "chart.valuesSection" . }}
+          EOF
+          echo "Chart prepared at /tmp/helm-test-nodiff (outside git workspace)"
+          ls -la /tmp/helm-test-nodiff
+
+      - id: action
+        uses: .
+        with:
+          chart-search-root: /tmp/helm-test-nodiff
+          values-file: values.yaml
+          output-file: README.md
+          fail-on-diff: 'true'
+          git-push: 'false'
+
+      - name: Assert action succeeded and README.md was generated
+        run: |
+          echo "Checking for README.md in /tmp/helm-test-nodiff"
+          ls -la /tmp/helm-test-nodiff/
+          if [ ! -f "/tmp/helm-test-nodiff/README.md" ]; then
+            echo "FAIL: README.md was not generated"
+            exit 1
+          fi
+          echo "PASS: action completed without diff failure"
+          echo "Note: chart-search-root is outside the git workspace, so git status does not detect changes there"
+          cat /tmp/helm-test-nodiff/README.md
