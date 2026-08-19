@@ -1,0 +1,57 @@
+name: Test basic helm-docs generation
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          chart-search-root: tests/fixtures/chart
+          values-file: values.yaml
+          output-file: README.md
+          template-files: README.md.gotmpl
+
+      - name: Assert helm-docs output is set
+        env:
+          HELM_DOCS_PATH: ${{ steps.action.outputs.helm-docs }}
+        run: |
+          echo "helm-docs output: $HELM_DOCS_PATH"
+          if [ -z "$HELM_DOCS_PATH" ]; then
+            echo "FAIL: helm-docs output is empty"
+            exit 1
+          fi
+          echo "PASS: helm-docs is set to '$HELM_DOCS_PATH'"
+
+      - name: Assert README.md was generated
+        run: |
+          README="$GITHUB_WORKSPACE/tests/fixtures/chart/README.md"
+          echo "Checking for README at: $README"
+          if [ ! -f "$README" ]; then
+            echo "FAIL: README.md was not generated"
+            exit 1
+          fi
+          echo "README.md content:"
+          cat "$README"
+          echo "PASS: README.md was generated"
+
+      - name: Assert README.md contains chart name
+        run: |
+          README="$GITHUB_WORKSPACE/tests/fixtures/chart/README.md"
+          if ! grep -q "test-chart" "$README"; then
+            echo "FAIL: README.md does not contain chart name 'test-chart'"
+            exit 1
+          fi
+          echo "PASS: README.md contains chart name"
+
+      - name: Assert README.md contains values documentation
+        run: |
+          README="$GITHUB_WORKSPACE/tests/fixtures/chart/README.md"
+          if ! grep -q "replicaCount" "$README"; then
+            echo "FAIL: README.md does not contain values documentation"
+            exit 1
+          fi
+          echo "PASS: README.md contains values documentation"

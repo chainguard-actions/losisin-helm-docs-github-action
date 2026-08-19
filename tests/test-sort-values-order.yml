@@ -1,0 +1,65 @@
+name: Test sort-values-order option
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create temp chart directory for sort test
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/test-chart-sorted"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/chart/Chart.yaml" "$GITHUB_WORKSPACE/test-chart-sorted/"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/chart/values.yaml" "$GITHUB_WORKSPACE/test-chart-sorted/"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/chart/README.md.gotmpl" "$GITHUB_WORKSPACE/test-chart-sorted/"
+
+      - id: action
+        uses: .
+        with:
+          chart-search-root: test-chart-sorted
+          values-file: values.yaml
+          output-file: README.md
+          template-files: README.md.gotmpl
+          sort-values-order: alphabetical
+
+      - name: Assert README.md was generated with sorted values
+        run: |
+          README="$GITHUB_WORKSPACE/test-chart-sorted/README.md"
+          echo "Checking for README at: $README"
+          if [ ! -f "$README" ]; then
+            echo "FAIL: README.md was not generated"
+            exit 1
+          fi
+          echo "README.md content:"
+          cat "$README"
+          echo "PASS: README.md was generated with sorted values"
+
+      - name: Assert helm-docs output is set
+        env:
+          HELM_DOCS_PATH: ${{ steps.action.outputs.helm-docs }}
+        run: |
+          echo "helm-docs output: $HELM_DOCS_PATH"
+          if [ -z "$HELM_DOCS_PATH" ]; then
+            echo "FAIL: helm-docs output is empty"
+            exit 1
+          fi
+          echo "PASS: helm-docs is set"
+
+      - name: Assert README.md contains values in alphabetical order
+        run: |
+          README="$GITHUB_WORKSPACE/test-chart-sorted/README.md"
+          # Check that image appears before replicaCount (alphabetical order: i < r)
+          IMAGE_LINE=$(grep -n "image" "$README" | head -1 | cut -d: -f1)
+          REPLICA_LINE=$(grep -n "replicaCount" "$README" | head -1 | cut -d: -f1)
+          echo "image first appears at line: $IMAGE_LINE"
+          echo "replicaCount first appears at line: $REPLICA_LINE"
+          if [ -z "$IMAGE_LINE" ] || [ -z "$REPLICA_LINE" ]; then
+            echo "FAIL: Could not find expected values in README"
+            exit 1
+          fi
+          if [ "$IMAGE_LINE" -gt "$REPLICA_LINE" ]; then
+            echo "FAIL: Values are not in alphabetical order (image should come before replicaCount)"
+            exit 1
+          fi
+          echo "PASS: Values appear to be in alphabetical order"

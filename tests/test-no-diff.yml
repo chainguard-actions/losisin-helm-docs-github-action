@@ -1,0 +1,50 @@
+name: Test no-diff scenario (docs already up to date)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Configure git
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Pre-generate README so it is up to date
+        id: pre-generate
+        uses: .
+        with:
+          chart-search-root: tests/fixtures/chart-up-to-date
+          values-file: values.yaml
+          output-file: README.md
+          template-files: README.md.gotmpl
+          skip-version-footer: 'true'
+
+      - name: Commit the generated README so git tracks it
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          git add tests/fixtures/chart-up-to-date/README.md
+          git commit -m "add up-to-date README"
+
+      - id: action
+        uses: .
+        with:
+          chart-search-root: tests/fixtures/chart-up-to-date
+          values-file: values.yaml
+          output-file: README.md
+          template-files: README.md.gotmpl
+          fail-on-diff: 'true'
+          skip-version-footer: 'true'
+
+      - name: Assert action succeeded (no diff detected)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected action to succeed (no diff), but got outcome '$OUTCOME'"
+            exit 1
+          fi
+          echo "PASS: action succeeded with no diff detected"

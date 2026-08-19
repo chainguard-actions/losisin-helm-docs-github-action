@@ -1,0 +1,6 @@
+apiVersion: v2
+name: up-to-date-chart
+description: A chart whose docs are already up to date
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

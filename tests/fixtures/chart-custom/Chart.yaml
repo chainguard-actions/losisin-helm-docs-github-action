@@ -1,0 +1,6 @@
+apiVersion: v2
+name: custom-chart
+description: A test Helm chart for custom output file testing
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

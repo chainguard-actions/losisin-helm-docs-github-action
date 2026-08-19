@@ -1,0 +1,50 @@
+name: Test custom output file
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          chart-search-root: tests/fixtures/chart-custom
+          values-file: values.yaml
+          output-file: DOCS.md
+          template-files: DOCS.md.gotmpl
+
+      - name: Assert custom output file was generated
+        run: |
+          DOCS="$GITHUB_WORKSPACE/tests/fixtures/chart-custom/DOCS.md"
+          echo "Checking for DOCS.md at: $DOCS"
+          if [ ! -f "$DOCS" ]; then
+            echo "FAIL: DOCS.md was not generated"
+            exit 1
+          fi
+          echo "DOCS.md content:"
+          cat "$DOCS"
+          echo "PASS: DOCS.md was generated"
+
+      - name: Assert default README.md was not generated
+        run: |
+          README="$GITHUB_WORKSPACE/tests/fixtures/chart-custom/README.md"
+          if [ -f "$README" ]; then
+            echo "FAIL: README.md was generated when it should not have been"
+            exit 1
+          fi
+          echo "PASS: README.md was not generated (correct)"
+
+      - name: Assert custom output file contains chart content
+        run: |
+          DOCS="$GITHUB_WORKSPACE/tests/fixtures/chart-custom/DOCS.md"
+          if ! grep -q "custom-chart" "$DOCS"; then
+            echo "FAIL: DOCS.md does not contain chart name"
+            exit 1
+          fi
+          if ! grep -q "replicaCount" "$DOCS"; then
+            echo "FAIL: DOCS.md does not contain values documentation"
+            exit 1
+          fi
+          echo "PASS: DOCS.md contains expected chart content"
