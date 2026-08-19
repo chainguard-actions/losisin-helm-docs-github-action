@@ -1,0 +1,51 @@
+name: Test no-diff - action succeeds when docs are up to date
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Copy chart fixture to workspace
+        run: |
+          cp -r "$GITHUB_WORKSPACE/tests/fixtures/chart" "$GITHUB_WORKSPACE/test-chart-nodiff"
+
+      - name: Generate initial README.md with helm-docs
+        run: |
+          # Download and run helm-docs to generate the initial README.md
+          curl -sSL "https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/helm-docs_1.14.2_Linux_x86_64.tar.gz" \
+            -o /tmp/helm-docs.tar.gz
+          tar -xzf /tmp/helm-docs.tar.gz -C /tmp helm-docs
+          chmod +x /tmp/helm-docs
+          /tmp/helm-docs \
+            --chart-search-root "$GITHUB_WORKSPACE/test-chart-nodiff" \
+            --values-file values.yaml \
+            --output-file README.md \
+            --template-files README.md.gotmpl
+          # Commit the generated README so git sees it as up to date
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          git add "$GITHUB_WORKSPACE/test-chart-nodiff/README.md"
+          git commit -m "add up-to-date readme"
+
+      - id: action
+        uses: .
+        with:
+          chart-search-root: test-chart-nodiff
+          values-file: values.yaml
+          output-file: README.md
+          template-files: README.md.gotmpl
+          fail-on-diff: 'true'
+          version: v1.14.2
+
+      - name: Assert action succeeded (no diff detected)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected action to succeed (no diff), but outcome was '$OUTCOME'"
+            exit 1
+          fi
+          echo "PASS: action correctly succeeded with no diff"

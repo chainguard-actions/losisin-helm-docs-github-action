@@ -1,67 +1,53 @@
-name: Test basic helm-docs generation
+name: Test basic usage - generate helm docs
 on:
   workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_REF: refs/heads/main
-      GITHUB_EVENT_NAME: push
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Prepare chart in temp location
+      - name: Copy chart fixture to workspace
         run: |
-          mkdir -p /tmp/helm-test-basic
-          cat > /tmp/helm-test-basic/Chart.yaml << 'EOF'
-          apiVersion: v2
-          name: test-chart
-          description: A test Helm chart for helm-docs testing
-          type: application
-          version: 0.1.0
-          appVersion: "1.0.0"
-          EOF
-          cat > /tmp/helm-test-basic/values.yaml << 'EOF'
-          # -- Number of replicas
-          replicaCount: 1
-          EOF
-          cat > /tmp/helm-test-basic/README.md.gotmpl << 'EOF'
-          # {{ .Name }}
-
-          {{ .Description }}
-
-          ## Values
-
-          {{ template "chart.valuesSection" . }}
-          EOF
-          echo "Chart prepared at /tmp/helm-test-basic"
-          ls -la /tmp/helm-test-basic
+          cp -r "$GITHUB_WORKSPACE/tests/fixtures/chart" "$GITHUB_WORKSPACE/test-chart"
 
       - id: action
         uses: .
         with:
-          chart-search-root: /tmp/helm-test-basic
+          chart-search-root: test-chart
           values-file: values.yaml
           output-file: README.md
-          git-push: 'false'
-          fail-on-diff: 'false'
+          template-files: README.md.gotmpl
+          version: v1.14.2
 
       - name: Assert README.md was generated
         run: |
-          echo "Checking for README.md in /tmp/helm-test-basic"
-          ls -la /tmp/helm-test-basic/
-          if [ ! -f "/tmp/helm-test-basic/README.md" ]; then
+          if [ ! -f "$GITHUB_WORKSPACE/test-chart/README.md" ]; then
             echo "FAIL: README.md was not generated"
             exit 1
           fi
           echo "PASS: README.md was generated"
-          cat /tmp/helm-test-basic/README.md
+          cat "$GITHUB_WORKSPACE/test-chart/README.md"
 
       - name: Assert README.md contains chart name
         run: |
-          if ! grep -q "test-chart" /tmp/helm-test-basic/README.md; then
+          if ! grep -q "test-chart" "$GITHUB_WORKSPACE/test-chart/README.md"; then
             echo "FAIL: README.md does not contain chart name 'test-chart'"
-            cat /tmp/helm-test-basic/README.md
             exit 1
           fi
           echo "PASS: README.md contains chart name"
+
+      - name: Assert helm-docs output is set
+        env:
+          ACTUAL: ${{ steps.action.outputs.helm-docs }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: helm-docs output is empty"
+            exit 1
+          fi
+          if [ ! -f "$ACTUAL" ]; then
+            echo "FAIL: helm-docs binary not found at path: $ACTUAL"
+            exit 1
+          fi
+          echo "PASS: helm-docs output is set to $ACTUAL"

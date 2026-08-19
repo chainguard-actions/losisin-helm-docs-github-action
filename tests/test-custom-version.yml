@@ -4,71 +4,54 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_REF: refs/heads/main
-      GITHUB_EVENT_NAME: push
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Prepare chart in temp location
+      - name: Copy chart fixture to workspace
         run: |
-          mkdir -p /tmp/helm-test-version
-          cat > /tmp/helm-test-version/Chart.yaml << 'EOF'
-          apiVersion: v2
-          name: test-chart
-          description: A test Helm chart for version testing
-          type: application
-          version: 0.1.0
-          appVersion: "1.0.0"
-          EOF
-          cat > /tmp/helm-test-version/values.yaml << 'EOF'
-          # -- Number of replicas
-          replicaCount: 1
-          EOF
-          cat > /tmp/helm-test-version/README.md.gotmpl << 'EOF'
-          # {{ .Name }}
-
-          {{ .Description }}
-
-          ## Values
-
-          {{ template "chart.valuesSection" . }}
-          EOF
-          echo "Chart prepared at /tmp/helm-test-version"
-          ls -la /tmp/helm-test-version
+          cp -r "$GITHUB_WORKSPACE/tests/fixtures/chart" "$GITHUB_WORKSPACE/test-chart-version"
 
       - id: action
         uses: .
         with:
-          chart-search-root: /tmp/helm-test-version
+          chart-search-root: test-chart-version
           values-file: values.yaml
           output-file: README.md
-          version: 'v1.13.1'
-          git-push: 'false'
-          fail-on-diff: 'false'
+          template-files: README.md.gotmpl
+          version: v1.13.1
+
+      - name: Assert helm-docs output is set
+        env:
+          ACTUAL: ${{ steps.action.outputs.helm-docs }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: helm-docs output is empty"
+            exit 1
+          fi
+          if [ ! -f "$ACTUAL" ]; then
+            echo "FAIL: helm-docs binary not found at path: $ACTUAL"
+            exit 1
+          fi
+          echo "PASS: helm-docs output is set to $ACTUAL"
+
+      - name: Assert helm-docs version matches requested version
+        env:
+          ACTUAL: ${{ steps.action.outputs.helm-docs }}
+        run: |
+          echo "actual binary: $ACTUAL"
+          VERSION_OUTPUT=$("$ACTUAL" --version 2>&1 || true)
+          echo "version output: $VERSION_OUTPUT"
+          if ! echo "$VERSION_OUTPUT" | grep -q "1.13.1"; then
+            echo "FAIL: expected helm-docs version 1.13.1 but got: $VERSION_OUTPUT"
+            exit 1
+          fi
+          echo "PASS: helm-docs version is 1.13.1"
 
       - name: Assert README.md was generated
         run: |
-          echo "Checking for README.md in /tmp/helm-test-version"
-          ls -la /tmp/helm-test-version/
-          if [ ! -f "/tmp/helm-test-version/README.md" ]; then
+          if [ ! -f "$GITHUB_WORKSPACE/test-chart-version/README.md" ]; then
             echo "FAIL: README.md was not generated"
             exit 1
           fi
           echo "PASS: README.md was generated"
-          cat /tmp/helm-test-version/README.md
-
-      - name: Assert helm-docs binary is available and correct version
-        run: |
-          # Verify helm-docs is in PATH and is the correct version
-          if ! command -v helm-docs &>/dev/null; then
-            echo "FAIL: helm-docs not found in PATH"
-            exit 1
-          fi
-          VERSION_OUTPUT=$(helm-docs --version 2>&1 || true)
-          echo "version output: $VERSION_OUTPUT"
-          if ! echo "$VERSION_OUTPUT" | grep -q "1.13.1"; then
-            echo "FAIL: expected version 1.13.1 in output: $VERSION_OUTPUT"
-            exit 1
-          fi
-          echo "PASS: correct version installed"

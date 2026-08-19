@@ -1,0 +1,16 @@
+# -- Number of replicas
+replicaCount: 1
+
+image:
+  # -- Image repository
+  repository: nginx
+  # -- Image tag
+  tag: "latest"
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- Service port
+  port: 80
