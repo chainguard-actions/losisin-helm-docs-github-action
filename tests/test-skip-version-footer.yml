@@ -1,0 +1,71 @@
+name: Test skip-version-footer option
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a minimal Helm chart for testing
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/tests/fixtures/footer-chart"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/footer-chart/Chart.yaml" <<'CHARTEOF'
+          apiVersion: v2
+          name: footer-chart
+          description: A chart to test skip-version-footer
+          type: application
+          version: 0.1.0
+          appVersion: "1.0.0"
+          CHARTEOF
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/footer-chart/Chart.yaml"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/footer-chart/values.yaml" <<'VALEOF'
+          # -- Number of replicas
+          replicaCount: 1
+          VALEOF
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/footer-chart/values.yaml"
+
+      - id: action
+        uses: .
+        with:
+          chart-search-root: tests/fixtures/footer-chart
+          values-file: values.yaml
+          output-file: README.md
+          skip-version-footer: 'true'
+          git-push: 'false'
+          fail-on-diff: 'false'
+
+      - name: Assert README.md was generated
+        run: |
+          README="$GITHUB_WORKSPACE/tests/fixtures/footer-chart/README.md"
+          if [ ! -f "$README" ]; then
+            echo "FAIL: README.md was not generated"
+            exit 1
+          fi
+          echo "README.md content:"
+          cat "$README"
+          echo "PASS: README.md was generated"
+
+      - name: Assert version footer is not present
+        run: |
+          README="$GITHUB_WORKSPACE/tests/fixtures/footer-chart/README.md"
+          # helm-docs version footer typically contains "helm-docs v<version>"
+          if grep -qi "helm-docs v" "$README"; then
+            echo "FAIL: README.md contains helm-docs version footer, but skip-version-footer was set to true"
+            cat "$README"
+            exit 1
+          fi
+          echo "PASS: version footer is not present in README.md"
+
+      - name: Assert helm-docs output is set
+        env:
+          HELM_DOCS_PATH: ${{ steps.action.outputs.helm-docs }}
+        run: |
+          echo "helm-docs output: $HELM_DOCS_PATH"
+          if [ -z "$HELM_DOCS_PATH" ]; then
+            echo "FAIL: helm-docs output is empty"
+            exit 1
+          fi
+          echo "PASS: helm-docs output is set"

@@ -1,0 +1,102 @@
+name: Test sort-values-order option
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a Helm chart with multiple values for sort testing
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/tests/fixtures/sort-chart"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/sort-chart/Chart.yaml" <<'CHARTEOF'
+          apiVersion: v2
+          name: sort-chart
+          description: A chart to test sort-values-order
+          type: application
+          version: 0.1.0
+          appVersion: "1.0.0"
+          CHARTEOF
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/sort-chart/Chart.yaml"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/sort-chart/values.yaml" <<'VALEOF'
+          # -- Zebra value
+          zebra: z
+
+          # -- Alpha value
+          alpha: a
+
+          # -- Middle value
+          middle: m
+          VALEOF
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/sort-chart/values.yaml"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/sort-chart/README.md.gotmpl" <<'TMPLEOF'
+          # {{ .Name }}
+
+          {{ .Description }}
+
+          ## Values
+
+          {{ template "chart.valuesSection" . }}
+          TMPLEOF
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/sort-chart/README.md.gotmpl"
+
+      - id: action
+        uses: .
+        with:
+          chart-search-root: tests/fixtures/sort-chart
+          values-file: values.yaml
+          output-file: README.md
+          template-files: README.md.gotmpl
+          sort-values-order: 'alphabetical'
+          git-push: 'false'
+          fail-on-diff: 'false'
+
+      - name: Assert README.md was generated
+        run: |
+          README="$GITHUB_WORKSPACE/tests/fixtures/sort-chart/README.md"
+          if [ ! -f "$README" ]; then
+            echo "FAIL: README.md was not generated"
+            exit 1
+          fi
+          echo "README.md content:"
+          cat "$README"
+          echo "PASS: README.md was generated"
+
+      - name: Assert values are sorted alphabetically
+        run: |
+          README="$GITHUB_WORKSPACE/tests/fixtures/sort-chart/README.md"
+          # Check that 'alpha' appears before 'zebra' in the output (alphabetical order)
+          ALPHA_LINE=$(grep -n "| alpha" "$README" | head -1 | cut -d: -f1)
+          ZEBRA_LINE=$(grep -n "| zebra" "$README" | head -1 | cut -d: -f1)
+          echo "alpha at line: $ALPHA_LINE, zebra at line: $ZEBRA_LINE"
+          if [ -z "$ALPHA_LINE" ] || [ -z "$ZEBRA_LINE" ]; then
+            echo "WARN: could not find table rows for 'alpha' or 'zebra', checking general order"
+            ALPHA_LINE=$(grep -n "alpha" "$README" | head -1 | cut -d: -f1)
+            ZEBRA_LINE=$(grep -n "zebra" "$README" | head -1 | cut -d: -f1)
+            echo "alpha at line: $ALPHA_LINE, zebra at line: $ZEBRA_LINE"
+          fi
+          if [ -z "$ALPHA_LINE" ] || [ -z "$ZEBRA_LINE" ]; then
+            echo "FAIL: could not find 'alpha' or 'zebra' in README.md"
+            exit 1
+          fi
+          if [ "$ALPHA_LINE" -lt "$ZEBRA_LINE" ]; then
+            echo "PASS: values are sorted alphabetically (alpha before zebra)"
+          else
+            echo "FAIL: values are not sorted alphabetically (alpha at line $ALPHA_LINE, zebra at line $ZEBRA_LINE)"
+            exit 1
+          fi
+
+      - name: Assert helm-docs output is set
+        env:
+          HELM_DOCS_PATH: ${{ steps.action.outputs.helm-docs }}
+        run: |
+          echo "helm-docs output: $HELM_DOCS_PATH"
+          if [ -z "$HELM_DOCS_PATH" ]; then
+            echo "FAIL: helm-docs output is empty"
+            exit 1
+          fi
+          echo "PASS: helm-docs output is set"

@@ -1,0 +1,95 @@
+name: Test basic helm-docs generation
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a minimal Helm chart for testing
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/tests/fixtures/basic-chart"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/basic-chart/Chart.yaml" <<'CHARTEOF'
+          apiVersion: v2
+          name: basic-chart
+          description: A basic Helm chart for testing helm-docs
+          type: application
+          version: 0.1.0
+          appVersion: "1.0.0"
+          CHARTEOF
+
+          # Use sed to strip leading spaces from heredoc
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/basic-chart/Chart.yaml"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/basic-chart/values.yaml" <<'VALEOF'
+          # -- Number of replicas
+          replicaCount: 1
+
+          # -- Docker image configuration
+          image:
+            # -- Image repository
+            repository: nginx
+            # -- Image tag
+            tag: latest
+          VALEOF
+
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/basic-chart/values.yaml"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/basic-chart/README.md.gotmpl" <<'TMPLEOF'
+          # {{ .Name }}
+
+          {{ .Description }}
+
+          ## Values
+
+          {{ template "chart.valuesSection" . }}
+          TMPLEOF
+
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/basic-chart/README.md.gotmpl"
+
+      - id: action
+        uses: .
+        with:
+          chart-search-root: tests/fixtures/basic-chart
+          values-file: values.yaml
+          output-file: README.md
+          template-files: README.md.gotmpl
+          git-push: 'false'
+          fail-on-diff: 'false'
+
+      - name: Assert README.md was generated
+        run: |
+          README="$GITHUB_WORKSPACE/tests/fixtures/basic-chart/README.md"
+          if [ ! -f "$README" ]; then
+            echo "FAIL: README.md was not generated"
+            exit 1
+          fi
+          echo "README.md content:"
+          cat "$README"
+          echo "PASS: README.md was generated"
+
+      - name: Assert README.md contains chart name
+        run: |
+          README="$GITHUB_WORKSPACE/tests/fixtures/basic-chart/README.md"
+          if ! grep -q "basic-chart" "$README"; then
+            echo "FAIL: README.md does not contain chart name 'basic-chart'"
+            exit 1
+          fi
+          echo "PASS: README.md contains chart name"
+
+      - name: Assert helm-docs output is set
+        env:
+          HELM_DOCS_PATH: ${{ steps.action.outputs.helm-docs }}
+        run: |
+          echo "helm-docs output: $HELM_DOCS_PATH"
+          if [ -z "$HELM_DOCS_PATH" ]; then
+            echo "FAIL: helm-docs output is empty"
+            exit 1
+          fi
+          if [ ! -f "$HELM_DOCS_PATH" ]; then
+            echo "FAIL: helm-docs binary not found at $HELM_DOCS_PATH"
+            exit 1
+          fi
+          echo "PASS: helm-docs output is set and binary exists"

@@ -1,0 +1,90 @@
+name: Test no-diff when docs are up to date
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a Helm chart and generate initial docs
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/tests/fixtures/nodiff-chart"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/nodiff-chart/Chart.yaml" <<'CHARTEOF'
+          apiVersion: v2
+          name: nodiff-chart
+          description: A chart to test no-diff scenario
+          type: application
+          version: 0.1.0
+          appVersion: "1.0.0"
+          CHARTEOF
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/nodiff-chart/Chart.yaml"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/nodiff-chart/values.yaml" <<'VALEOF'
+          # -- Number of replicas
+          replicaCount: 1
+          VALEOF
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/nodiff-chart/values.yaml"
+
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/nodiff-chart/README.md.gotmpl" <<'TMPLEOF'
+          # {{ .Name }}
+
+          {{ .Description }}
+
+          ## Values
+
+          {{ template "chart.valuesSection" . }}
+          TMPLEOF
+          sed -i 's/^          //' "$GITHUB_WORKSPACE/tests/fixtures/nodiff-chart/README.md.gotmpl"
+
+      # First run: generate the docs
+      - id: first-run
+        uses: .
+        with:
+          chart-search-root: tests/fixtures/nodiff-chart
+          values-file: values.yaml
+          output-file: README.md
+          template-files: README.md.gotmpl
+          git-push: 'false'
+          fail-on-diff: 'false'
+
+      - name: Commit the generated README so git sees it as up-to-date
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          git add "$GITHUB_WORKSPACE/tests/fixtures/nodiff-chart/README.md"
+          git commit -m "add generated README for nodiff-chart"
+
+      # Second run: should detect no diff since README is already up to date
+      - id: second-run
+        uses: .
+        with:
+          chart-search-root: tests/fixtures/nodiff-chart
+          values-file: values.yaml
+          output-file: README.md
+          template-files: README.md.gotmpl
+          git-push: 'false'
+          fail-on-diff: 'true'
+
+      - name: Assert second run succeeded (no diff)
+        env:
+          OUTCOME: ${{ steps.second-run.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected action to succeed (no diff), but outcome was '$OUTCOME'"
+            exit 1
+          fi
+          echo "PASS: action correctly succeeded with no diff"
+
+      - name: Assert helm-docs output is set
+        env:
+          HELM_DOCS_PATH: ${{ steps.second-run.outputs.helm-docs }}
+        run: |
+          echo "helm-docs output: $HELM_DOCS_PATH"
+          if [ -z "$HELM_DOCS_PATH" ]; then
+            echo "FAIL: helm-docs output is empty"
+            exit 1
+          fi
+          echo "PASS: helm-docs output is set"
